@@ -127,8 +127,6 @@ impl Sponsorship {
     }
 
     pub fn set_duration(&mut self, duration: Option<u64>) {
-        assert_one_yocto();
-
         if let Some(duration) = duration {
             self.proposal_duration.set(&duration);
         } else {
@@ -141,8 +139,6 @@ impl Sponsorship {
     }
 
     pub fn rescind(&mut self, id: u64) -> Proposal {
-        assert_one_yocto();
-
         let proposal = self.proposals.get(id);
         require!(proposal.is_some(), "Proposal does not exist");
         let proposal = proposal.unwrap();
@@ -178,8 +174,6 @@ impl Sponsorship {
     }
 
     fn resolve(&mut self, id: u64, accepted: bool) -> Proposal {
-        assert_one_yocto();
-
         let proposal = self.proposals.get(id);
         require!(proposal.is_some(), "Proposal does not exist");
         let proposal = proposal.unwrap();
@@ -343,16 +337,19 @@ macro_rules! impl_sponsorship {
             }
 
             fn spo_set_duration(&mut self, duration: Option<u64>) {
+                assert_one_yocto();
                 self.$sponsorship.set_duration(duration)
             }
 
             fn spo_submit(&mut self, submission: ProposalSubmission) -> Proposal {
+                // submit manages its own deposit requirements
                 let proposal = self.$sponsorship.submit(submission);
                 $(self.$on_status_change(&proposal);)?
                 proposal
             }
 
             fn spo_accept(&mut self, id: u64) -> Proposal {
+                assert_one_yocto();
                 self.$ownership.assert_owner();
                 let proposal = self.$sponsorship.accept(id);
                 $(self.$on_status_change(&proposal);)?
@@ -360,6 +357,7 @@ macro_rules! impl_sponsorship {
             }
 
             fn spo_reject(&mut self, id: u64) -> Proposal {
+                assert_one_yocto();
                 self.$ownership.assert_owner();
                 let proposal = self.$sponsorship.reject(id);
                 $(self.$on_status_change(&proposal);)?
@@ -367,6 +365,7 @@ macro_rules! impl_sponsorship {
             }
 
             fn spo_rescind(&mut self, id: u64) -> Proposal {
+                assert_one_yocto();
                 let proposal = self.$sponsorship.rescind(id);
                 $(self.$on_status_change(&proposal);)?
                 proposal

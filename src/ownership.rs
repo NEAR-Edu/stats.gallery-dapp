@@ -31,14 +31,12 @@ impl Ownership {
     }
 
     pub fn renounce_owner(&mut self) {
-        assert_one_yocto();
         self.assert_owner();
         self.owner = None;
         self.proposed_owner.remove();
     }
 
     pub fn propose_owner(&mut self, account_id: Option<AccountId>) {
-        assert_one_yocto();
         self.assert_owner();
         if let Some(a) = account_id {
             self.proposed_owner.set(&a);
@@ -48,7 +46,6 @@ impl Ownership {
     }
 
     pub fn accept_owner(&mut self) {
-        assert_one_yocto();
         let proposed_owner = self
             .proposed_owner
             .take()
@@ -84,16 +81,19 @@ macro_rules! impl_ownership {
 
             #[payable]
             fn own_renounce_owner(&mut self) {
+                assert_one_yocto();
                 self.$ownership.renounce_owner()
             }
 
             #[payable]
             fn own_propose_owner(&mut self, account_id: Option<AccountId>) {
+                assert_one_yocto();
                 self.$ownership.propose_owner(account_id);
             }
 
             #[payable]
             fn own_accept_owner(&mut self) {
+                assert_one_yocto();
                 self.$ownership.accept_owner();
             }
         }
