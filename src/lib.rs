@@ -35,26 +35,59 @@ mod tests {
     }
 
     fn sponsorship_tags() -> Vec<String> {
-        vec!["tag_one", "tag_two", "tag_three"]
+        vec![contract::TAG_BADGE_CREATE, contract::TAG_BADGE_EXTEND]
             .iter()
             .map(|x| x.to_string())
             .collect()
     }
 
-    const PROPOSAL_DURATION: u64 = 1_000_000_000 * 60 * 60 * 24 * 7;
+    const ONE_DAY: u64 = 1_000_000_000 * 60 * 60 * 24; // nanoseconds
+    const BADGE_MAX_ACTIVE_DURATION: u64 = ONE_DAY * 180;
+    const PROPOSAL_DURATION: u64 = ONE_DAY * 7;
+
+    const ONE_NEAR: u128 = u128::pow(10, 24);
+    const BADGE_RATE_PER_DAY: u128 = ONE_NEAR / 10; // 0.1 NEAR
+    const BADGE_MIN_CREATION_DEPOSIT: u128 = ONE_NEAR * 3 / 2; // 1.5 NEAR
 
     fn get_context(predecessor_account_id: AccountId) -> VMContextBuilder {
         let mut builder = VMContextBuilder::new();
         builder
             .current_account_id(contract_account())
-            .account_balance(14500000000000000000000000)
+            .account_balance(15 * ONE_NEAR)
             .signer_account_id(predecessor_account_id.clone())
             .predecessor_account_id(predecessor_account_id);
         builder
     }
 
     fn create_instance() -> StatsGallery {
-        StatsGallery::new(owner_account(), sponsorship_tags(), PROPOSAL_DURATION)
+        StatsGallery::new(
+            owner_account(),
+            PROPOSAL_DURATION,
+            BADGE_RATE_PER_DAY,
+            BADGE_MAX_ACTIVE_DURATION,
+            BADGE_MIN_CREATION_DEPOSIT,
+        )
+    }
+
+    fn badge_create() -> BadgeCreate {
+        BadgeCreate {
+            id: String::from("my-badge-01"),
+            group_id: String::from("my-badge"),
+            name: String::from("Cool Badge"),
+            description: String::from("This is a badge you earn from doing cool stuff"),
+            duration: ONE_DAY * 45,
+            start_at: None,
+        }
+    }
+
+    fn proposal_submission() -> ProposalSubmission {
+        ProposalSubmission {
+            description: "This is a sponsorship proposal".to_string(),
+            deposit: 0,
+            duration: Some(ONE_DAY * 45),
+            msg: Some(serde_json::to_string(&badge_create()).unwrap()),
+            tag: sponsorship_tags()[0].to_string(),
+        }
     }
 
     #[test]
@@ -86,6 +119,16 @@ mod tests {
             Some(PROPOSAL_DURATION),
             c.spo_get_duration(),
             "Proposal duration should be properly initialized",
+        );
+        assert_eq!(
+            BADGE_MAX_ACTIVE_DURATION,
+            c.get_badge_max_active_duration(),
+            "Badge max active duration should be properly initialized",
+        );
+        assert_eq!(
+            BADGE_MIN_CREATION_DEPOSIT,
+            c.get_badge_min_creation_deposit(),
+            "Badge min creation deposit should be properly initialized",
         );
     }
 
@@ -225,16 +268,18 @@ mod tests {
         let mut c = create_instance();
 
         let mut context = get_context(accounts(1));
-        let proposal_deposit = Balance::from(10u128.pow(24));
+        let submission = proposal_submission();
+        let proposal_deposit = Balance::from(u128::max(
+            BADGE_MIN_CREATION_DEPOSIT,
+            BADGE_RATE_PER_DAY * u128::from(submission.duration.unwrap() / ONE_DAY),
+        ));
+        let submission = ProposalSubmission {
+            deposit: proposal_deposit,
+            ..submission
+        };
         context.attached_deposit(proposal_deposit + 10u128.pow(22));
         testing_env!(context.build());
-        let proposal = c.spo_submit(ProposalSubmission {
-            description: "This is a sponsorship proposal".to_string(),
-            deposit: proposal_deposit,
-            duration: None,
-            msg: None,
-            tag: sponsorship_tags()[0].to_string(),
-        });
+        let proposal = c.spo_submit(submission);
 
         assert_eq!(0, proposal.id, "Should be first proposal",);
         assert_eq!(
@@ -285,11 +330,8 @@ mod tests {
 
         testing_env!(context.build());
         c.spo_submit(ProposalSubmission {
-            description: "This is a sponsorship proposal".to_string(),
             deposit: proposal_deposit,
-            duration: None,
-            msg: None,
-            tag: sponsorship_tags()[0].to_string(),
+            ..proposal_submission()
         });
     }
 
@@ -308,11 +350,8 @@ mod tests {
 
         testing_env!(context.build());
         c.spo_submit(ProposalSubmission {
-            description: "This is a sponsorship proposal".to_string(),
             deposit: proposal_deposit,
-            duration: None,
-            msg: None,
-            tag: sponsorship_tags()[0].to_string(),
+            ..proposal_submission()
         });
     }
 
@@ -323,16 +362,18 @@ mod tests {
         let mut c = create_instance();
 
         let mut context = get_context(accounts(1));
-        let proposal_deposit = Balance::from(10u128.pow(24));
+        let submission = proposal_submission();
+        let proposal_deposit = Balance::from(u128::max(
+            BADGE_MIN_CREATION_DEPOSIT,
+            BADGE_RATE_PER_DAY * u128::from(submission.duration.unwrap() / ONE_DAY),
+        ));
+        let submission = ProposalSubmission {
+            deposit: proposal_deposit,
+            ..submission
+        };
         context.attached_deposit(proposal_deposit + 10u128.pow(22));
         testing_env!(context.build());
-        let proposal = c.spo_submit(ProposalSubmission {
-            description: "This is a sponsorship proposal".to_string(),
-            deposit: proposal_deposit,
-            duration: None,
-            msg: None,
-            tag: sponsorship_tags()[0].to_string(),
-        });
+        let proposal = c.spo_submit(submission);
 
         let mut context = get_context(accounts(1));
         context.attached_deposit(1);
@@ -374,16 +415,18 @@ mod tests {
         let mut c = create_instance();
 
         let mut context = get_context(accounts(1));
-        let proposal_deposit = Balance::from(10u128.pow(24));
+        let submission = proposal_submission();
+        let proposal_deposit = Balance::from(u128::max(
+            BADGE_MIN_CREATION_DEPOSIT,
+            BADGE_RATE_PER_DAY * u128::from(submission.duration.unwrap() / ONE_DAY),
+        ));
+        let submission = ProposalSubmission {
+            deposit: proposal_deposit,
+            ..submission
+        };
         context.attached_deposit(proposal_deposit + 10u128.pow(22));
         testing_env!(context.build());
-        let proposal = c.spo_submit(ProposalSubmission {
-            description: "This is a sponsorship proposal".to_string(),
-            deposit: proposal_deposit,
-            duration: None,
-            msg: None,
-            tag: sponsorship_tags()[0].to_string(),
-        });
+        let proposal = c.spo_submit(submission);
 
         let context = get_context(accounts(1));
         // context.attached_deposit(1);
@@ -400,16 +443,18 @@ mod tests {
         let mut c = create_instance();
 
         let mut context = get_context(accounts(1));
-        let proposal_deposit = Balance::from(10u128.pow(24));
+        let submission = proposal_submission();
+        let proposal_deposit = Balance::from(u128::max(
+            BADGE_MIN_CREATION_DEPOSIT,
+            BADGE_RATE_PER_DAY * u128::from(submission.duration.unwrap() / ONE_DAY),
+        ));
+        let submission = ProposalSubmission {
+            deposit: proposal_deposit,
+            ..submission
+        };
         context.attached_deposit(proposal_deposit + 10u128.pow(22));
         testing_env!(context.build());
-        let proposal = c.spo_submit(ProposalSubmission {
-            description: "This is a sponsorship proposal".to_string(),
-            deposit: proposal_deposit,
-            duration: None,
-            msg: None,
-            tag: sponsorship_tags()[0].to_string(),
-        });
+        let proposal = c.spo_submit(submission);
 
         let mut context = get_context(accounts(2));
         context.attached_deposit(1);
@@ -426,18 +471,20 @@ mod tests {
         let mut c = create_instance();
 
         let mut context = get_context(accounts(1));
-        let proposal_deposit = Balance::from(10u128.pow(24));
-        context
-            .attached_deposit(proposal_deposit + 10u128.pow(22))
-            .block_timestamp(1_000_000_000);
-        testing_env!(context.build());
-        let proposal = c.spo_submit(ProposalSubmission {
-            description: "This is a sponsorship proposal".to_string(),
+        let submission = proposal_submission();
+        let proposal_deposit = Balance::from(u128::max(
+            BADGE_MIN_CREATION_DEPOSIT,
+            BADGE_RATE_PER_DAY * u128::from(submission.duration.unwrap() / ONE_DAY),
+        ));
+        let submission = ProposalSubmission {
             deposit: proposal_deposit,
-            duration: None,
-            msg: None,
-            tag: sponsorship_tags()[0].to_string(),
-        });
+            ..submission
+        };
+        context.attached_deposit(proposal_deposit + 10u128.pow(22))
+            .block_timestamp(1_000_000_000);
+
+        testing_env!(context.build());
+        let proposal = c.spo_submit(submission);
 
         let mut context = get_context(accounts(1));
         context
@@ -456,17 +503,18 @@ mod tests {
         let mut c = create_instance();
 
         let mut context = get_context(accounts(1));
-        let proposal_deposit = Balance::from(10u128.pow(24));
-        context
-            .attached_deposit(proposal_deposit + 10u128.pow(22));
-        testing_env!(context.build());
-        let proposal = c.spo_submit(ProposalSubmission {
-            description: "This is a sponsorship proposal".to_string(),
+        let submission = proposal_submission();
+        let proposal_deposit = Balance::from(u128::max(
+            BADGE_MIN_CREATION_DEPOSIT,
+            BADGE_RATE_PER_DAY * u128::from(submission.duration.unwrap() / ONE_DAY),
+        ));
+        let submission = ProposalSubmission {
             deposit: proposal_deposit,
-            duration: None,
-            msg: None,
-            tag: sponsorship_tags()[0].to_string(),
-        });
+            ..submission
+        };
+        context.attached_deposit(proposal_deposit + 10u128.pow(22));
+        testing_env!(context.build());
+        let proposal = c.spo_submit(submission);
 
         let mut context = get_context(accounts(1));
         context.attached_deposit(1);

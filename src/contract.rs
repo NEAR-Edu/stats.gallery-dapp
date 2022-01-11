@@ -1,10 +1,54 @@
 use crate::impl_ownership;
 use crate::*;
 
+pub const TAG_BADGE_CREATE: &'static str = "badge_create";
+pub const TAG_BADGE_EXTEND: &'static str = "badge_extend";
+
 #[derive(BorshStorageKey, BorshSerialize)]
 enum StorageKey {
     OWNERSHIP,
     SPONSORSHIP,
+    BADGES,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct Badge {
+    id: String,
+    group_id: String,
+    name: String,
+    description: String,
+    is_enabled: bool,
+    created_at: u64,
+    start_at: u64,
+    duration: Option<u64>,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct BadgeCreate {
+    pub id: String,
+    pub group_id: String,
+    pub name: String,
+    pub description: String,
+    pub start_at: Option<u64>,
+    pub duration: u64,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct BadgeExtend {
+    pub id: String,
+    pub duration: u64,
+}
+
+impl Badge {
+    pub fn is_expired(&self, now: u64) -> bool {
+        match self.duration {
+            Some(duration) => self.created_at + duration < now,
+            _ => false, // No duration = never expires
+        }
+    }
 }
 
 #[near_bindgen]
@@ -12,26 +56,262 @@ enum StorageKey {
 pub struct StatsGallery {
     ownership: Ownership,
     sponsorship: Sponsorship,
+    badges: UnorderedMap<String, Badge>,
+    badge_rate_per_day: Balance,
+    badge_max_active_duration: u64,
+    badge_min_creation_deposit: Balance,
+}
+
+const DAY: u64 = 1_000_000_000 * 60 * 60 * 24;
+
+// Basically unstable_div_ceil
+fn billable_days_in_duration(duration: u64) -> u64 {
+    duration / DAY + if duration % DAY > 0 { 1 } else { 0 }
 }
 
 #[near_bindgen]
 impl StatsGallery {
     #[init]
-    pub fn new(owner_id: AccountId, sponsorship_tags: Vec<String>, proposal_duration: u64) -> Self {
+    pub fn new(
+        owner_id: AccountId,
+        proposal_duration: u64,
+        badge_rate_per_day: Balance,
+        badge_max_active_duration: u64,
+        badge_min_creation_deposit: Balance,
+    ) -> Self {
         Self {
             ownership: Ownership::new(StorageKey::OWNERSHIP, owner_id),
             sponsorship: Sponsorship::new(
                 StorageKey::SPONSORSHIP,
-                sponsorship_tags,
+                vec![TAG_BADGE_CREATE.to_string(), TAG_BADGE_EXTEND.to_string()],
                 Some(proposal_duration),
             ),
+            badges: UnorderedMap::new(StorageKey::BADGES),
+            badge_rate_per_day,
+            badge_max_active_duration,
+            badge_min_creation_deposit,
         }
     }
 
-    fn test_cb(&self, proposal: &Proposal) {
-        log!("Test callback on proposal: {}", proposal.id);
+    pub fn get_badges(&self) -> Vec<Badge> {
+        let now = env::block_timestamp();
+
+        self.badges
+            .values()
+            .filter(|b| b.is_enabled && !b.is_expired(now))
+            .collect()
+    }
+
+    pub fn get_badge(&self, badge_id: String) -> Option<Badge> {
+        self.badges.get(&badge_id)
+    }
+
+    #[payable]
+    pub fn set_badge_is_enabled(&mut self, badge_id: String, is_enabled: bool) -> Badge {
+        assert_one_yocto();
+        self.ownership.assert_owner();
+
+        let badge = self
+            .badges
+            .get(&badge_id)
+            .unwrap_or_else(|| env::panic_str("Badge does not exist"));
+
+        let new_badge = Badge {
+            is_enabled,
+            ..badge
+        };
+
+        self.badges.insert(&badge_id, &new_badge);
+
+        new_badge
+    }
+
+    #[payable]
+    pub fn insert_badge(&mut self, badge: Badge) {
+        assert_one_yocto();
+        self.ownership.assert_owner();
+
+        self.badges.insert(&badge.id, &badge);
+    }
+
+    #[payable]
+    pub fn remove_badge(&mut self, badge_id: &String) {
+        assert_one_yocto();
+        self.ownership.assert_owner();
+
+        self.badges.remove(&badge_id);
+    }
+
+    pub fn get_badge_rate_per_day(&self) -> Balance {
+        self.badge_rate_per_day
+    }
+
+    #[payable]
+    pub fn set_badge_rate_per_day(&mut self, badge_rate_per_day: Balance) {
+        assert_one_yocto();
+        self.ownership.assert_owner();
+        require!(badge_rate_per_day > 0, "Badge rate must be greater than 0");
+
+        self.badge_rate_per_day = badge_rate_per_day;
+    }
+
+    pub fn get_badge_max_active_duration(&self) -> u64 {
+        self.badge_max_active_duration
+    }
+
+    #[payable]
+    pub fn set_badge_max_active_duration(&mut self, badge_max_active_duration: u64) {
+        assert_one_yocto();
+        self.ownership.assert_owner();
+        require!(
+            badge_max_active_duration > 0,
+            "Badge max active duration must be greater than 0"
+        );
+
+        self.badge_max_active_duration = badge_max_active_duration;
+    }
+
+    pub fn get_badge_min_creation_deposit(&self) -> Balance {
+        self.badge_min_creation_deposit
+    }
+
+    #[payable]
+    pub fn set_badge_min_creation_deposit(&mut self, badge_min_creation_deposit: Balance) {
+        assert_one_yocto();
+        self.ownership.assert_owner();
+
+        self.badge_min_creation_deposit = badge_min_creation_deposit;
+    }
+
+    fn parse_proposal_msg<T, 'a>(&self, proposal: &'a Proposal) -> T
+    where
+        T: Deserialize<'a>,
+    {
+        let msg = proposal
+            .msg
+            .as_ref()
+            .unwrap_or_else(|| env::panic_str("msg value required"));
+
+        serde_json::from_str::<T>(msg)
+            .unwrap_or_else(|e| env::panic_str(&format!("Error parsing msg: {}", e)))
+    }
+
+    fn parse_and_validate_create_proposal(&self, proposal: &Proposal) -> BadgeCreate {
+        let create_request = self.parse_proposal_msg::<BadgeCreate>(proposal);
+
+        // Ensure unique ID
+        require!(
+            self.badges.get(&create_request.id).is_none(),
+            "Badge ID already exists"
+        );
+
+        let now = env::block_timestamp();
+
+        // Validate start_at
+        require!(
+            create_request.start_at.unwrap_or(now) + create_request.duration > now,
+            "Badge active period has already ended",
+        );
+
+        // Validate duration
+        require!(
+            create_request.duration <= self.badge_max_active_duration,
+            "Exceeded maximum active duration",
+        );
+
+        // Validate deposit
+        require!(
+            proposal.deposit >= self.badge_min_creation_deposit,
+            "Deposit does not meet minimum creation deposit requirement",
+        );
+        require!(
+            proposal.deposit
+                >= u128::from(billable_days_in_duration(create_request.duration))
+                    * self.badge_rate_per_day,
+            "Insufficient deposit for specified duration",
+        );
+
+        create_request
+    }
+
+    fn parse_and_validate_extend_proposal(&self, proposal: &Proposal) -> (BadgeExtend, Badge) {
+        let extend_request = self.parse_proposal_msg::<BadgeExtend>(proposal);
+
+        let existing_badge = self
+            .badges
+            .get(&extend_request.id)
+            .unwrap_or_else(|| env::panic_str("Badge ID does not exist"));
+
+        require!(
+            existing_badge.duration.is_some(),
+            "Cannot extend: Existing badge has no duration (indefinite)"
+        );
+
+        let now = env::block_timestamp();
+
+        // Validate duration
+        require!(
+            u64::saturating_sub(
+                existing_badge.start_at
+                    + existing_badge.duration.unwrap()
+                    + extend_request.duration,
+                now
+            ) <= self.badge_max_active_duration,
+            "Exceeded maximum active duration",
+        );
+
+        // Validate deposit
+        require!(
+            proposal.deposit
+                >= u128::from(billable_days_in_duration(extend_request.duration))
+                    * self.badge_rate_per_day
+        );
+
+        (extend_request, existing_badge)
+    }
+
+    fn on_proposal_change(&mut self, proposal: &Proposal) {
+        match (&proposal.status, proposal.tag.as_str()) {
+            (ProposalStatus::PENDING, TAG_BADGE_CREATE) => {
+                self.parse_and_validate_create_proposal(proposal);
+            }
+            (ProposalStatus::PENDING, TAG_BADGE_EXTEND) => {
+                self.parse_and_validate_extend_proposal(proposal);
+            }
+            (ProposalStatus::ACCEPTED, TAG_BADGE_CREATE) => {
+                let create_request = self.parse_and_validate_create_proposal(proposal);
+                let now = env::block_timestamp();
+
+                self.badges.insert(
+                    &create_request.id.clone(),
+                    &Badge {
+                        id: create_request.id,
+                        group_id: create_request.group_id,
+                        name: create_request.name,
+                        description: create_request.description,
+                        created_at: env::block_timestamp(),
+                        start_at: create_request.start_at.unwrap_or(now),
+                        duration: Some(create_request.duration),
+                        is_enabled: true,
+                    },
+                );
+            }
+            (ProposalStatus::ACCEPTED, TAG_BADGE_EXTEND) => {
+                let (extend_request, existing_badge) =
+                    self.parse_and_validate_extend_proposal(proposal);
+
+                self.badges.insert(
+                    &existing_badge.id.clone(),
+                    &Badge {
+                        duration: Some(existing_badge.duration.unwrap() + extend_request.duration),
+                        ..existing_badge
+                    },
+                );
+            }
+            _ => {}
+        }
     }
 }
 
 impl_ownership!(StatsGallery, ownership);
-impl_sponsorship!(StatsGallery, sponsorship, ownership, test_cb);
+impl_sponsorship!(StatsGallery, sponsorship, ownership, on_proposal_change);

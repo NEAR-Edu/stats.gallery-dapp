@@ -47,6 +47,8 @@ pub struct Sponsorship {
     tags: UnorderedSet<String>,
     proposals: Vector<Proposal>,
     proposal_duration: LazyOption<u64>,
+    total_deposits: Balance,
+    total_accepted_deposits: Balance,
 }
 
 impl Sponsorship {
@@ -64,6 +66,8 @@ impl Sponsorship {
             tags: tags_set,
             proposals: Vector::new(prefix_key(&k, b"p")),
             proposal_duration: LazyOption::new(prefix_key(&k, b"d"), proposal_duration.as_ref()),
+            total_deposits: 0,
+            total_accepted_deposits: 0,
         }
     }
 
@@ -79,6 +83,14 @@ impl Sponsorship {
         for tag in tags {
             self.tags.remove(&tag);
         }
+    }
+
+    pub fn get_total_deposits(&self) -> Balance {
+        self.total_deposits
+    }
+
+    pub fn get_total_accepted_deposits(&self) -> Balance {
+        self.total_accepted_deposits
     }
 
     pub fn get_all(&self) -> Vec<Proposal> {
@@ -161,7 +173,8 @@ impl Sponsorship {
 
         self.proposals.replace(id, &resolved);
 
-        // TODO: Pull model instead of push?
+        self.total_deposits -= proposal.deposit;
+
         let author_id = resolved.author_id.clone();
         log!(
             "Refunding rescinded deposit to {}: {}",
@@ -195,6 +208,10 @@ impl Sponsorship {
         };
 
         self.proposals.replace(id, &resolved);
+
+        if accepted {
+            self.total_accepted_deposits += proposal.deposit;
+        }
 
         resolved
     }
@@ -260,6 +277,8 @@ impl Sponsorship {
             Promise::new(env::predecessor_account_id()).transfer(refund);
         }
 
+        self.total_deposits += proposal.deposit;
+
         proposal
     }
 }
@@ -268,6 +287,8 @@ pub trait Sponsorable {
     fn spo_get_tags(&self) -> Vec<String>;
     fn spo_add_tags(&mut self, tags: Vec<String>);
     fn spo_remove_tags(&mut self, tags: Vec<String>);
+    fn spo_get_total_deposits(&self) -> Balance;
+    fn spo_get_total_accepted_deposits(&self) -> Balance;
     fn spo_get_all_proposals(&self) -> Vec<Proposal>;
     fn spo_get_pending_proposals(&self) -> Vec<Proposal>;
     fn spo_get_accepted_proposals(&self) -> Vec<Proposal>;
@@ -292,16 +313,26 @@ macro_rules! impl_sponsorship {
                 self.$sponsorship.get_tags()
             }
 
+            #[payable]
             fn spo_add_tags(&mut self, tags: Vec<String>) {
                 assert_one_yocto();
                 self.$ownership.assert_owner();
                 self.$sponsorship.add_tags(tags)
             }
 
+            #[payable]
             fn spo_remove_tags(&mut self, tags: Vec<String>) {
                 assert_one_yocto();
                 self.$ownership.assert_owner();
                 self.$sponsorship.remove_tags(tags)
+            }
+
+            fn spo_get_total_deposits(&self) -> Balance {
+                self.$sponsorship.get_total_deposits()
+            }
+
+            fn spo_get_total_accepted_deposits(&self) -> Balance {
+                self.$sponsorship.get_total_accepted_deposits()
             }
 
             fn spo_get_all_proposals(&self) -> Vec<Proposal> {
@@ -336,6 +367,7 @@ macro_rules! impl_sponsorship {
                 self.$sponsorship.get_duration()
             }
 
+            #[payable]
             fn spo_set_duration(&mut self, duration: Option<u64>) {
                 assert_one_yocto();
                 self.$sponsorship.set_duration(duration)
@@ -348,6 +380,7 @@ macro_rules! impl_sponsorship {
                 proposal
             }
 
+            #[payable]
             fn spo_accept(&mut self, id: u64) -> Proposal {
                 assert_one_yocto();
                 self.$ownership.assert_owner();
@@ -356,6 +389,7 @@ macro_rules! impl_sponsorship {
                 proposal
             }
 
+            #[payable]
             fn spo_reject(&mut self, id: u64) -> Proposal {
                 assert_one_yocto();
                 self.$ownership.assert_owner();
@@ -364,6 +398,7 @@ macro_rules! impl_sponsorship {
                 proposal
             }
 
+            #[payable]
             fn spo_rescind(&mut self, id: u64) -> Proposal {
                 assert_one_yocto();
                 let proposal = self.$sponsorship.rescind(id);
