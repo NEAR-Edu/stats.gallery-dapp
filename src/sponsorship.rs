@@ -37,8 +37,11 @@ pub struct Proposal {
 }
 
 impl Proposal {
-    pub fn is_within_active_period(&self, now: u64) -> bool {
-        self.duration.is_none() || self.created_at + self.duration.unwrap() > now
+    pub fn is_expired(&self, now: u64) -> bool {
+        match self.duration {
+            Some(duration) => self.created_at + duration < now,
+            None => false,
+        }
     }
 }
 
@@ -122,7 +125,7 @@ impl Sponsorship {
         let now = env::block_timestamp();
         self.proposals
             .iter()
-            .filter(|x| x.status == ProposalStatus::PENDING && x.is_within_active_period(now))
+            .filter(|x| x.status == ProposalStatus::PENDING && !x.is_expired(now))
             .collect()
     }
 
@@ -130,7 +133,7 @@ impl Sponsorship {
         let now = env::block_timestamp();
         self.proposals
             .iter()
-            .filter(|x| x.status == ProposalStatus::PENDING && !x.is_within_active_period(now))
+            .filter(|x| x.status == ProposalStatus::PENDING && x.is_expired(now))
             .collect()
     }
 
@@ -163,7 +166,6 @@ impl Sponsorship {
             "Proposal can only be rescinded by original author"
         );
         let now = env::block_timestamp();
-        require!(proposal.is_within_active_period(now), "Proposal is expired");
 
         let resolved = Proposal {
             resolved_at: Some(now),
@@ -195,7 +197,7 @@ impl Sponsorship {
             "Proposal has already been resolved"
         );
         let now = env::block_timestamp();
-        require!(proposal.is_within_active_period(now), "Proposal is expired");
+        require!(!proposal.is_expired(now), "Proposal is expired");
 
         let resolved = Proposal {
             resolved_at: Some(now),

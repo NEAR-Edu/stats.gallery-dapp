@@ -464,7 +464,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Proposal is expired")]
     fn rescind_proposal_expired() {
         let context = get_context(owner_account());
         testing_env!(context.build());
