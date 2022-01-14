@@ -20,9 +20,9 @@ $ ./build.sh
 
 # Deploy
 
-## Testnet
-
 Set the `OWNER_ID` environment variable to the ID of the account to which you wish to assign ownership of the contract deployment.
+
+## Testnet
 
 ```txt
 $ OWNER_ID=your-account-id.testnet ./dev-deploy.sh
