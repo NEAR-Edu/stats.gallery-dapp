@@ -6,4 +6,4 @@ near deploy \
   --wasmFile $wasm_path \
   --accountId "$1" \
   --initFunction new \
-  --initArgs "$(<init-args.json)"
+  --initArgs "$(node ./init-args.js)"

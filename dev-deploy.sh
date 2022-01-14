@@ -6,4 +6,4 @@ near dev-deploy \
   --wasmFile $wasm_path \
   "$@"
 
-near call "$(<./neardev/dev-account)" new "$(<init-args.json)" --accountId "$(<./neardev/dev-account)"
+near call "$(<./neardev/dev-account)" new "$(node ./init-args.js)" --accountId "$(<./neardev/dev-account)"
