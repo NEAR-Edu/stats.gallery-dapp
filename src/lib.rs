@@ -475,7 +475,8 @@ mod tests {
             BadgeAction::Create(badge_create()),
             TAG_BADGE_CREATE.to_string(),
         );
-        context.attached_deposit(submission.deposit + 10u128.pow(22))
+        context
+            .attached_deposit(submission.deposit + 10u128.pow(22))
             .block_timestamp(1_000_000_000);
 
         testing_env!(context.build());
@@ -521,6 +522,7 @@ mod tests {
         testing_env!(context.build());
         let mut c = create_instance();
 
+        // Submit badge creation request
         let mut context = get_context(accounts(1));
         let submission = proposal_submission(
             BadgeAction::Create(badge_create()),
@@ -530,6 +532,7 @@ mod tests {
         testing_env!(context.build());
         let proposal = c.spo_submit(submission);
 
+        // Accept badge creation request
         let mut context = get_context(owner_account());
         context.attached_deposit(1);
         testing_env!(context.build());
@@ -557,46 +560,115 @@ mod tests {
         );
     }
 
-    #[ignore]
+    #[test]
+    #[should_panic(expected = "tag mismatch")]
+    fn create_badge_tag_mismatch() {
+        let context = get_context(owner_account());
+        testing_env!(context.build());
+        let mut c = create_instance();
+
+        // Submit badge creation request
+        let mut context = get_context(accounts(1));
+        let submission = proposal_submission(
+            BadgeAction::Create(badge_create()),
+            TAG_BADGE_EXTEND.to_string(),
+        );
+        context.attached_deposit(submission.deposit + 10u128.pow(22));
+        testing_env!(context.build());
+        c.spo_submit(submission);
+    }
+
     #[test]
     fn extend_badge() {
         let context = get_context(owner_account());
         testing_env!(context.build());
         let mut c = create_instance();
 
+        // Submit badge creation request
         let mut context = get_context(accounts(1));
-        let submission = proposal_submission(
+        let create_submission = proposal_submission(
             BadgeAction::Create(badge_create()),
             TAG_BADGE_CREATE.to_string(),
         );
-        context.attached_deposit(submission.deposit + 10u128.pow(22));
+        context.attached_deposit(create_submission.deposit + 10u128.pow(22));
         testing_env!(context.build());
-        let proposal = c.spo_submit(submission);
+        let create_proposal = c.spo_submit(create_submission);
 
+        // Accept badge creation request
         let mut context = get_context(owner_account());
         context.attached_deposit(1);
         testing_env!(context.build());
 
-        c.spo_accept(proposal.id);
+        c.spo_accept(create_proposal.id);
 
-        require!(c.get_badges().len() == 1, "There should be one badge",);
-
-        let expected = badge_create();
-        let actual = c.get_badge(expected.id.clone());
-        require!(
-            actual.is_some(),
-            "Badge is activated and accessible by its ID",
+        // Submit badge extension request
+        let mut context = get_context(accounts(1));
+        let extend_submission = proposal_submission(
+            BadgeAction::Extend(badge_extend()),
+            TAG_BADGE_EXTEND.to_string(),
         );
+
+        context.attached_deposit(extend_submission.deposit + 10u128.pow(22));
+        testing_env!(context.build());
+        let extend_proposal = c.spo_submit(extend_submission);
+
+        // Accept badge extension request
+        let mut context = get_context(owner_account());
+        context.attached_deposit(1);
+        testing_env!(context.build());
+
+        c.spo_accept(extend_proposal.id);
+
+        let expected_create = badge_create();
+        let expected = badge_extend();
+        let actual = c.get_badge(expected.id.clone());
+
+        require!(actual.is_some(), "Badge exists after extend",);
 
         let actual = actual.unwrap();
 
-        require!(actual.id == expected.id, "IDs match",);
+        require!(expected.id == actual.id, "IDs match",);
         require!(
-            actual.name == expected.name
-                && actual.description == expected.description
-                && actual.duration.unwrap() == expected.duration
-                && actual.group_id == expected.group_id,
-            "Metadata match",
+            actual.duration.unwrap() == expected.duration + expected_create.duration,
+            "Duration after extend should be sum of original and extend request"
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "Exceeded maximum active duration")]
+    fn extend_badge_exceeds_max_duration() {
+        let context = get_context(owner_account());
+        testing_env!(context.build());
+        let mut c = create_instance();
+
+        // Submit badge creation request
+        let mut context = get_context(accounts(1));
+        let create_submission = proposal_submission(
+            BadgeAction::Create(badge_create()),
+            TAG_BADGE_CREATE.to_string(),
+        );
+        context.attached_deposit(create_submission.deposit + 10u128.pow(22));
+        testing_env!(context.build());
+        let create_proposal = c.spo_submit(create_submission);
+
+        // Accept badge creation request
+        let mut context = get_context(owner_account());
+        context.attached_deposit(1);
+        testing_env!(context.build());
+
+        c.spo_accept(create_proposal.id);
+
+        // Submit badge extension request
+        let mut context = get_context(accounts(1));
+        let original = BadgeExtend {
+            duration: BADGE_MAX_ACTIVE_DURATION - badge_create().duration + 1, // should exceed max duration by 1
+            ..badge_extend()
+        };
+        let extend_submission =
+            proposal_submission(BadgeAction::Extend(original), TAG_BADGE_EXTEND.to_string());
+
+        context.attached_deposit(extend_submission.deposit + 10u128.pow(22));
+        testing_env!(context.build());
+        c.spo_submit(extend_submission);
     }
 }

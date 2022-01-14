@@ -23,7 +23,10 @@ pub struct ProposalSubmission<T> {
 
 #[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize, PartialEq, Debug)]
 #[serde(crate = "near_sdk::serde")]
-pub struct Proposal<T> where T: BorshDeserialize + BorshSerialize {
+pub struct Proposal<T>
+where
+    T: BorshDeserialize + BorshSerialize,
+{
     pub id: u64,
     pub description: String,
     pub tag: String,
@@ -36,7 +39,10 @@ pub struct Proposal<T> where T: BorshDeserialize + BorshSerialize {
     pub resolved_at: Option<u64>,
 }
 
-impl<T> Proposal<T> where T: BorshDeserialize + BorshSerialize {
+impl<T> Proposal<T>
+where
+    T: BorshDeserialize + BorshSerialize,
+{
     pub fn is_expired(&self, now: u64) -> bool {
         match self.duration {
             Some(duration) => self.created_at + duration < now,
@@ -46,7 +52,10 @@ impl<T> Proposal<T> where T: BorshDeserialize + BorshSerialize {
 }
 
 #[derive(BorshDeserialize, BorshSerialize)]
-pub struct Sponsorship<T> where T: BorshDeserialize + BorshSerialize {
+pub struct Sponsorship<T>
+where
+    T: BorshDeserialize + BorshSerialize,
+{
     tags: UnorderedSet<String>,
     proposals: Vector<Proposal<T>>,
     proposal_duration: LazyOption<u64>,
@@ -54,7 +63,10 @@ pub struct Sponsorship<T> where T: BorshDeserialize + BorshSerialize {
     total_accepted_deposits: Balance,
 }
 
-impl<T> Sponsorship<T> where T: BorshDeserialize + BorshSerialize {
+impl<T> Sponsorship<T>
+where
+    T: BorshDeserialize + BorshSerialize,
+{
     pub fn new<S>(storage_key_prefix: S, tags: Vec<String>, proposal_duration: Option<u64>) -> Self
     where
         S: IntoStorageKey,
@@ -285,7 +297,10 @@ impl<T> Sponsorship<T> where T: BorshDeserialize + BorshSerialize {
     }
 }
 
-pub trait Sponsorable<T> where T: BorshDeserialize + BorshSerialize {
+pub trait Sponsorable<T>
+where
+    T: BorshDeserialize + BorshSerialize,
+{
     fn spo_get_tags(&self) -> Vec<String>;
     fn spo_add_tags(&mut self, tags: Vec<String>);
     fn spo_remove_tags(&mut self, tags: Vec<String>);

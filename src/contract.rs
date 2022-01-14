@@ -270,7 +270,8 @@ impl StatsGallery {
         require!(
             proposal.deposit
                 >= u128::from(billable_days_in_duration(extend_request.duration))
-                    * self.badge_rate_per_day
+                    * self.badge_rate_per_day,
+            "Insufficient deposit for specified duration",
         );
 
         existing_badge
