@@ -170,8 +170,9 @@ where
         require!(proposal.is_some(), "Proposal does not exist");
         let proposal = proposal.unwrap();
         require!(
-            proposal.status == ProposalStatus::PENDING,
-            "Proposal has already been resolved"
+            proposal.status == ProposalStatus::PENDING
+                || proposal.status == ProposalStatus::REJECTED,
+            "Proposal cannot be rescinded"
         );
         require!(
             proposal.author_id == env::predecessor_account_id(),
@@ -248,7 +249,10 @@ where
 
         let id = self.proposals.len();
 
-        let duration = match (self.proposal_duration.get(), submission.duration.map(|x| x.into())) {
+        let duration = match (
+            self.proposal_duration.get(),
+            submission.duration.map(|x| x.into()),
+        ) {
             (Some(contract_duration), Some(submission_duration)) => {
                 Some(u64::min(contract_duration, submission_duration))
             }

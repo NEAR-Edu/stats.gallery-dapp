@@ -286,8 +286,8 @@ mod tests {
     #[test]
     fn serialize_actions() {
         let submission = proposal_submission(
-            BadgeAction::Create(badge_create()),
-            TAG_BADGE_CREATE.to_string(),
+            BadgeAction::Extend(badge_extend()),
+            TAG_BADGE_EXTEND.to_string(),
         );
 
         log!("{}", serde_json::to_string(&submission).unwrap());
@@ -503,7 +503,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Proposal has already been resolved")]
+    #[should_panic(expected = "Proposal cannot be rescinded")]
     fn rescind_proposal_already_resolved() {
         let context = get_context(owner_account());
         testing_env!(context.build());
