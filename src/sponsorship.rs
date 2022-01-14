@@ -13,21 +13,21 @@ pub enum ProposalStatus {
 
 #[derive(Deserialize, Serialize)]
 #[serde(crate = "near_sdk::serde")]
-pub struct ProposalSubmission {
+pub struct ProposalSubmission<T> {
     pub description: String,
     pub tag: String,
-    pub msg: Option<String>,
+    pub msg: Option<T>,
     pub duration: Option<u64>,
     pub deposit: Balance,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize, PartialEq, Debug)]
 #[serde(crate = "near_sdk::serde")]
-pub struct Proposal {
+pub struct Proposal<T> where T: BorshDeserialize + BorshSerialize {
     pub id: u64,
     pub description: String,
     pub tag: String,
-    pub msg: Option<String>,
+    pub msg: Option<T>,
     pub author_id: AccountId,
     pub deposit: Balance,
     pub status: ProposalStatus,
@@ -36,7 +36,7 @@ pub struct Proposal {
     pub resolved_at: Option<u64>,
 }
 
-impl Proposal {
+impl<T> Proposal<T> where T: BorshDeserialize + BorshSerialize {
     pub fn is_expired(&self, now: u64) -> bool {
         match self.duration {
             Some(duration) => self.created_at + duration < now,
@@ -46,15 +46,15 @@ impl Proposal {
 }
 
 #[derive(BorshDeserialize, BorshSerialize)]
-pub struct Sponsorship {
+pub struct Sponsorship<T> where T: BorshDeserialize + BorshSerialize {
     tags: UnorderedSet<String>,
-    proposals: Vector<Proposal>,
+    proposals: Vector<Proposal<T>>,
     proposal_duration: LazyOption<u64>,
     total_deposits: Balance,
     total_accepted_deposits: Balance,
 }
 
-impl Sponsorship {
+impl<T> Sponsorship<T> where T: BorshDeserialize + BorshSerialize {
     pub fn new<S>(storage_key_prefix: S, tags: Vec<String>, proposal_duration: Option<u64>) -> Self
     where
         S: IntoStorageKey,
@@ -96,32 +96,32 @@ impl Sponsorship {
         self.total_accepted_deposits
     }
 
-    pub fn get_all(&self) -> Vec<Proposal> {
+    pub fn get_all(&self) -> Vec<Proposal<T>> {
         self.proposals.to_vec()
     }
 
-    pub fn get_accepted(&self) -> Vec<Proposal> {
+    pub fn get_accepted(&self) -> Vec<Proposal<T>> {
         self.proposals
             .iter()
             .filter(|x| x.status == ProposalStatus::ACCEPTED)
             .collect()
     }
 
-    pub fn get_rejected(&self) -> Vec<Proposal> {
+    pub fn get_rejected(&self) -> Vec<Proposal<T>> {
         self.proposals
             .iter()
             .filter(|x| x.status == ProposalStatus::REJECTED)
             .collect()
     }
 
-    pub fn get_rescinded(&self) -> Vec<Proposal> {
+    pub fn get_rescinded(&self) -> Vec<Proposal<T>> {
         self.proposals
             .iter()
             .filter(|x| x.status == ProposalStatus::RESCINDED)
             .collect()
     }
 
-    pub fn get_pending(&self) -> Vec<Proposal> {
+    pub fn get_pending(&self) -> Vec<Proposal<T>> {
         let now = env::block_timestamp();
         self.proposals
             .iter()
@@ -129,7 +129,7 @@ impl Sponsorship {
             .collect()
     }
 
-    pub fn get_expired(&self) -> Vec<Proposal> {
+    pub fn get_expired(&self) -> Vec<Proposal<T>> {
         let now = env::block_timestamp();
         self.proposals
             .iter()
@@ -137,7 +137,7 @@ impl Sponsorship {
             .collect()
     }
 
-    pub fn get_proposal(&self, id: u64) -> Option<Proposal> {
+    pub fn get_proposal(&self, id: u64) -> Option<Proposal<T>> {
         self.proposals.get(id)
     }
 
@@ -153,7 +153,7 @@ impl Sponsorship {
         self.proposal_duration.get()
     }
 
-    pub fn rescind(&mut self, id: u64) -> Proposal {
+    pub fn rescind(&mut self, id: u64) -> Proposal<T> {
         let proposal = self.proposals.get(id);
         require!(proposal.is_some(), "Proposal does not exist");
         let proposal = proposal.unwrap();
@@ -188,7 +188,7 @@ impl Sponsorship {
         resolved
     }
 
-    fn resolve(&mut self, id: u64, accepted: bool) -> Proposal {
+    fn resolve(&mut self, id: u64, accepted: bool) -> Proposal<T> {
         let proposal = self.proposals.get(id);
         require!(proposal.is_some(), "Proposal does not exist");
         let proposal = proposal.unwrap();
@@ -218,15 +218,15 @@ impl Sponsorship {
         resolved
     }
 
-    pub fn accept(&mut self, id: u64) -> Proposal {
+    pub fn accept(&mut self, id: u64) -> Proposal<T> {
         self.resolve(id, true)
     }
 
-    pub fn reject(&mut self, id: u64) -> Proposal {
+    pub fn reject(&mut self, id: u64) -> Proposal<T> {
         self.resolve(id, false)
     }
 
-    pub fn submit(&mut self, submission: ProposalSubmission) -> Proposal {
+    pub fn submit(&mut self, submission: ProposalSubmission<T>) -> Proposal<T> {
         let attached_deposit = env::attached_deposit();
         require!(attached_deposit >= 1, "Deposit required");
 
@@ -285,32 +285,32 @@ impl Sponsorship {
     }
 }
 
-pub trait Sponsorable {
+pub trait Sponsorable<T> where T: BorshDeserialize + BorshSerialize {
     fn spo_get_tags(&self) -> Vec<String>;
     fn spo_add_tags(&mut self, tags: Vec<String>);
     fn spo_remove_tags(&mut self, tags: Vec<String>);
     fn spo_get_total_deposits(&self) -> Balance;
     fn spo_get_total_accepted_deposits(&self) -> Balance;
-    fn spo_get_all_proposals(&self) -> Vec<Proposal>;
-    fn spo_get_pending_proposals(&self) -> Vec<Proposal>;
-    fn spo_get_accepted_proposals(&self) -> Vec<Proposal>;
-    fn spo_get_rejected_proposals(&self) -> Vec<Proposal>;
-    fn spo_get_rescinded_proposals(&self) -> Vec<Proposal>;
-    fn spo_get_expired_proposals(&self) -> Vec<Proposal>;
-    fn spo_get_proposal(&self, id: u64) -> Option<Proposal>;
+    fn spo_get_all_proposals(&self) -> Vec<Proposal<T>>;
+    fn spo_get_pending_proposals(&self) -> Vec<Proposal<T>>;
+    fn spo_get_accepted_proposals(&self) -> Vec<Proposal<T>>;
+    fn spo_get_rejected_proposals(&self) -> Vec<Proposal<T>>;
+    fn spo_get_rescinded_proposals(&self) -> Vec<Proposal<T>>;
+    fn spo_get_expired_proposals(&self) -> Vec<Proposal<T>>;
+    fn spo_get_proposal(&self, id: u64) -> Option<Proposal<T>>;
     fn spo_get_duration(&self) -> Option<u64>;
     fn spo_set_duration(&mut self, duration: Option<u64>);
-    fn spo_submit(&mut self, submission: ProposalSubmission) -> Proposal;
-    fn spo_accept(&mut self, id: u64) -> Proposal;
-    fn spo_reject(&mut self, id: u64) -> Proposal;
-    fn spo_rescind(&mut self, id: u64) -> Proposal;
+    fn spo_submit(&mut self, submission: ProposalSubmission<T>) -> Proposal<T>;
+    fn spo_accept(&mut self, id: u64) -> Proposal<T>;
+    fn spo_reject(&mut self, id: u64) -> Proposal<T>;
+    fn spo_rescind(&mut self, id: u64) -> Proposal<T>;
 }
 
 #[macro_export]
 macro_rules! impl_sponsorship {
-    ($contract: ident, $sponsorship: ident, $ownership: ident $(, $on_status_change: ident)? $(,)?) => {
+    ($contract: ident, $sponsorship: ident, $sponsorship_type: ident, $ownership: ident $(, $on_status_change: ident)? $(,)?) => {
         #[near_bindgen]
-        impl Sponsorable for $contract {
+        impl Sponsorable<$sponsorship_type> for $contract {
             fn spo_get_tags(&self) -> Vec<String> {
                 self.$sponsorship.get_tags()
             }
@@ -337,31 +337,31 @@ macro_rules! impl_sponsorship {
                 self.$sponsorship.get_total_accepted_deposits()
             }
 
-            fn spo_get_all_proposals(&self) -> Vec<Proposal> {
+            fn spo_get_all_proposals(&self) -> Vec<Proposal<$sponsorship_type>> {
                 self.$sponsorship.get_all()
             }
 
-            fn spo_get_pending_proposals(&self) -> Vec<Proposal> {
+            fn spo_get_pending_proposals(&self) -> Vec<Proposal<$sponsorship_type>> {
                 self.$sponsorship.get_pending()
             }
 
-            fn spo_get_accepted_proposals(&self) -> Vec<Proposal> {
+            fn spo_get_accepted_proposals(&self) -> Vec<Proposal<$sponsorship_type>> {
                 self.$sponsorship.get_accepted()
             }
 
-            fn spo_get_rejected_proposals(&self) -> Vec<Proposal> {
+            fn spo_get_rejected_proposals(&self) -> Vec<Proposal<$sponsorship_type>> {
                 self.$sponsorship.get_rejected()
             }
 
-            fn spo_get_rescinded_proposals(&self) -> Vec<Proposal> {
+            fn spo_get_rescinded_proposals(&self) -> Vec<Proposal<$sponsorship_type>> {
                 self.$sponsorship.get_rescinded()
             }
 
-            fn spo_get_expired_proposals(&self) -> Vec<Proposal> {
+            fn spo_get_expired_proposals(&self) -> Vec<Proposal<$sponsorship_type>> {
                 self.$sponsorship.get_expired()
             }
 
-            fn spo_get_proposal(&self, id: u64) -> Option<Proposal> {
+            fn spo_get_proposal(&self, id: u64) -> Option<Proposal<$sponsorship_type>> {
                 self.$sponsorship.get_proposal(id)
             }
 
@@ -375,7 +375,7 @@ macro_rules! impl_sponsorship {
                 self.$sponsorship.set_duration(duration)
             }
 
-            fn spo_submit(&mut self, submission: ProposalSubmission) -> Proposal {
+            fn spo_submit(&mut self, submission: ProposalSubmission<$sponsorship_type>) -> Proposal<$sponsorship_type> {
                 // submit manages its own deposit requirements
                 let proposal = self.$sponsorship.submit(submission);
                 $(self.$on_status_change(&proposal);)?
@@ -383,7 +383,7 @@ macro_rules! impl_sponsorship {
             }
 
             #[payable]
-            fn spo_accept(&mut self, id: u64) -> Proposal {
+            fn spo_accept(&mut self, id: u64) -> Proposal<$sponsorship_type> {
                 assert_one_yocto();
                 self.$ownership.assert_owner();
                 let proposal = self.$sponsorship.accept(id);
@@ -392,7 +392,7 @@ macro_rules! impl_sponsorship {
             }
 
             #[payable]
-            fn spo_reject(&mut self, id: u64) -> Proposal {
+            fn spo_reject(&mut self, id: u64) -> Proposal<$sponsorship_type> {
                 assert_one_yocto();
                 self.$ownership.assert_owner();
                 let proposal = self.$sponsorship.reject(id);
@@ -401,7 +401,7 @@ macro_rules! impl_sponsorship {
             }
 
             #[payable]
-            fn spo_rescind(&mut self, id: u64) -> Proposal {
+            fn spo_rescind(&mut self, id: u64) -> Proposal<$sponsorship_type> {
                 assert_one_yocto();
                 let proposal = self.$sponsorship.rescind(id);
                 $(self.$on_status_change(&proposal);)?

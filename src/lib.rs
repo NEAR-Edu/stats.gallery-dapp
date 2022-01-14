@@ -69,6 +69,20 @@ mod tests {
         )
     }
 
+    fn calculate_deposit(action: &BadgeAction) -> Balance {
+        match action {
+            BadgeAction::Create(create_request) => Balance::max(
+                BADGE_MIN_CREATION_DEPOSIT,
+                Balance::from(billable_days_in_duration(create_request.duration))
+                    * BADGE_RATE_PER_DAY,
+            ),
+            BadgeAction::Extend(extend_request) => {
+                Balance::from(billable_days_in_duration(extend_request.duration))
+                    * BADGE_RATE_PER_DAY
+            }
+        }
+    }
+
     fn badge_create() -> BadgeCreate {
         BadgeCreate {
             id: String::from("my-badge-01"),
@@ -80,13 +94,20 @@ mod tests {
         }
     }
 
-    fn proposal_submission() -> ProposalSubmission {
+    fn badge_extend() -> BadgeExtend {
+        BadgeExtend {
+            id: String::from("my-badge-01"),
+            duration: ONE_DAY * 12,
+        }
+    }
+
+    fn proposal_submission(action: BadgeAction, tag: String) -> ProposalSubmission<BadgeAction> {
         ProposalSubmission {
             description: "This is a sponsorship proposal".to_string(),
-            deposit: 0,
+            deposit: calculate_deposit(&action),
             duration: Some(ONE_DAY * 45),
-            msg: Some(serde_json::to_string(&badge_create()).unwrap()),
-            tag: sponsorship_tags()[0].to_string(),
+            msg: Some(action),
+            tag,
         }
     }
 
@@ -268,16 +289,12 @@ mod tests {
         let mut c = create_instance();
 
         let mut context = get_context(accounts(1));
-        let submission = proposal_submission();
-        let proposal_deposit = Balance::from(u128::max(
-            BADGE_MIN_CREATION_DEPOSIT,
-            BADGE_RATE_PER_DAY * u128::from(submission.duration.unwrap() / ONE_DAY),
-        ));
-        let submission = ProposalSubmission {
-            deposit: proposal_deposit,
-            ..submission
-        };
-        context.attached_deposit(proposal_deposit + 10u128.pow(22));
+        let submission = proposal_submission(
+            BadgeAction::Create(badge_create()),
+            TAG_BADGE_CREATE.to_string(),
+        );
+        context.attached_deposit(submission.deposit + 10u128.pow(22));
+        let submission_deposit = submission.deposit;
         testing_env!(context.build());
         let proposal = c.spo_submit(submission);
 
@@ -288,7 +305,7 @@ mod tests {
             "Should be first proposal",
         );
         assert_eq!(
-            proposal_deposit, proposal.deposit,
+            submission_deposit, proposal.deposit,
             "Should have attached correct deposit",
         );
         assert_eq!(
@@ -326,13 +343,13 @@ mod tests {
         let mut c = create_instance();
 
         let context = get_context(accounts(1));
-        let proposal_deposit = Balance::from(10u128.pow(24));
+        let submission = proposal_submission(
+            BadgeAction::Create(badge_create()),
+            TAG_BADGE_CREATE.to_string(),
+        );
 
         testing_env!(context.build());
-        c.spo_submit(ProposalSubmission {
-            deposit: proposal_deposit,
-            ..proposal_submission()
-        });
+        c.spo_submit(submission);
     }
 
     #[test]
@@ -343,16 +360,15 @@ mod tests {
         let mut c = create_instance();
 
         let mut context = get_context(accounts(1));
-        let proposal_deposit = Balance::from(10u128.pow(24));
-
+        let submission = proposal_submission(
+            BadgeAction::Create(badge_create()),
+            TAG_BADGE_CREATE.to_string(),
+        );
         // Missing deposit for storage
-        context.attached_deposit(proposal_deposit /* + 10u128.pow(22) */);
+        context.attached_deposit(submission.deposit /* + 10u128.pow(22) */);
 
         testing_env!(context.build());
-        c.spo_submit(ProposalSubmission {
-            deposit: proposal_deposit,
-            ..proposal_submission()
-        });
+        c.spo_submit(submission);
     }
 
     #[test]
@@ -362,16 +378,11 @@ mod tests {
         let mut c = create_instance();
 
         let mut context = get_context(accounts(1));
-        let submission = proposal_submission();
-        let proposal_deposit = Balance::from(u128::max(
-            BADGE_MIN_CREATION_DEPOSIT,
-            BADGE_RATE_PER_DAY * u128::from(submission.duration.unwrap() / ONE_DAY),
-        ));
-        let submission = ProposalSubmission {
-            deposit: proposal_deposit,
-            ..submission
-        };
-        context.attached_deposit(proposal_deposit + 10u128.pow(22));
+        let submission = proposal_submission(
+            BadgeAction::Create(badge_create()),
+            TAG_BADGE_CREATE.to_string(),
+        );
+        context.attached_deposit(submission.deposit + 10u128.pow(22));
         testing_env!(context.build());
         let proposal = c.spo_submit(submission);
 
@@ -415,16 +426,11 @@ mod tests {
         let mut c = create_instance();
 
         let mut context = get_context(accounts(1));
-        let submission = proposal_submission();
-        let proposal_deposit = Balance::from(u128::max(
-            BADGE_MIN_CREATION_DEPOSIT,
-            BADGE_RATE_PER_DAY * u128::from(submission.duration.unwrap() / ONE_DAY),
-        ));
-        let submission = ProposalSubmission {
-            deposit: proposal_deposit,
-            ..submission
-        };
-        context.attached_deposit(proposal_deposit + 10u128.pow(22));
+        let submission = proposal_submission(
+            BadgeAction::Create(badge_create()),
+            TAG_BADGE_CREATE.to_string(),
+        );
+        context.attached_deposit(submission.deposit + 10u128.pow(22));
         testing_env!(context.build());
         let proposal = c.spo_submit(submission);
 
@@ -443,16 +449,11 @@ mod tests {
         let mut c = create_instance();
 
         let mut context = get_context(accounts(1));
-        let submission = proposal_submission();
-        let proposal_deposit = Balance::from(u128::max(
-            BADGE_MIN_CREATION_DEPOSIT,
-            BADGE_RATE_PER_DAY * u128::from(submission.duration.unwrap() / ONE_DAY),
-        ));
-        let submission = ProposalSubmission {
-            deposit: proposal_deposit,
-            ..submission
-        };
-        context.attached_deposit(proposal_deposit + 10u128.pow(22));
+        let submission = proposal_submission(
+            BadgeAction::Create(badge_create()),
+            TAG_BADGE_CREATE.to_string(),
+        );
+        context.attached_deposit(submission.deposit + 10u128.pow(22));
         testing_env!(context.build());
         let proposal = c.spo_submit(submission);
 
@@ -470,16 +471,11 @@ mod tests {
         let mut c = create_instance();
 
         let mut context = get_context(accounts(1));
-        let submission = proposal_submission();
-        let proposal_deposit = Balance::from(u128::max(
-            BADGE_MIN_CREATION_DEPOSIT,
-            BADGE_RATE_PER_DAY * u128::from(submission.duration.unwrap() / ONE_DAY),
-        ));
-        let submission = ProposalSubmission {
-            deposit: proposal_deposit,
-            ..submission
-        };
-        context.attached_deposit(proposal_deposit + 10u128.pow(22))
+        let submission = proposal_submission(
+            BadgeAction::Create(badge_create()),
+            TAG_BADGE_CREATE.to_string(),
+        );
+        context.attached_deposit(submission.deposit + 10u128.pow(22))
             .block_timestamp(1_000_000_000);
 
         testing_env!(context.build());
@@ -502,16 +498,11 @@ mod tests {
         let mut c = create_instance();
 
         let mut context = get_context(accounts(1));
-        let submission = proposal_submission();
-        let proposal_deposit = Balance::from(u128::max(
-            BADGE_MIN_CREATION_DEPOSIT,
-            BADGE_RATE_PER_DAY * u128::from(submission.duration.unwrap() / ONE_DAY),
-        ));
-        let submission = ProposalSubmission {
-            deposit: proposal_deposit,
-            ..submission
-        };
-        context.attached_deposit(proposal_deposit + 10u128.pow(22));
+        let submission = proposal_submission(
+            BadgeAction::Create(badge_create()),
+            TAG_BADGE_CREATE.to_string(),
+        );
+        context.attached_deposit(submission.deposit + 10u128.pow(22));
         testing_env!(context.build());
         let proposal = c.spo_submit(submission);
 
@@ -522,5 +513,90 @@ mod tests {
         c.spo_rescind(proposal.id);
         // Cannot rescind twice
         c.spo_rescind(proposal.id);
+    }
+
+    #[test]
+    fn create_badge() {
+        let context = get_context(owner_account());
+        testing_env!(context.build());
+        let mut c = create_instance();
+
+        let mut context = get_context(accounts(1));
+        let submission = proposal_submission(
+            BadgeAction::Create(badge_create()),
+            TAG_BADGE_CREATE.to_string(),
+        );
+        context.attached_deposit(submission.deposit + 10u128.pow(22));
+        testing_env!(context.build());
+        let proposal = c.spo_submit(submission);
+
+        let mut context = get_context(owner_account());
+        context.attached_deposit(1);
+        testing_env!(context.build());
+
+        c.spo_accept(proposal.id);
+
+        require!(c.get_badges().len() == 1, "There should be one badge",);
+
+        let expected = badge_create();
+        let actual = c.get_badge(expected.id.clone());
+        require!(
+            actual.is_some(),
+            "Badge is activated and accessible by its ID",
+        );
+
+        let actual = actual.unwrap();
+
+        require!(actual.id == expected.id, "IDs match",);
+        require!(
+            actual.name == expected.name
+                && actual.description == expected.description
+                && actual.duration.unwrap() == expected.duration
+                && actual.group_id == expected.group_id,
+            "Metadata match",
+        );
+    }
+
+    #[ignore]
+    #[test]
+    fn extend_badge() {
+        let context = get_context(owner_account());
+        testing_env!(context.build());
+        let mut c = create_instance();
+
+        let mut context = get_context(accounts(1));
+        let submission = proposal_submission(
+            BadgeAction::Create(badge_create()),
+            TAG_BADGE_CREATE.to_string(),
+        );
+        context.attached_deposit(submission.deposit + 10u128.pow(22));
+        testing_env!(context.build());
+        let proposal = c.spo_submit(submission);
+
+        let mut context = get_context(owner_account());
+        context.attached_deposit(1);
+        testing_env!(context.build());
+
+        c.spo_accept(proposal.id);
+
+        require!(c.get_badges().len() == 1, "There should be one badge",);
+
+        let expected = badge_create();
+        let actual = c.get_badge(expected.id.clone());
+        require!(
+            actual.is_some(),
+            "Badge is activated and accessible by its ID",
+        );
+
+        let actual = actual.unwrap();
+
+        require!(actual.id == expected.id, "IDs match",);
+        require!(
+            actual.name == expected.name
+                && actual.description == expected.description
+                && actual.duration.unwrap() == expected.duration
+                && actual.group_id == expected.group_id,
+            "Metadata match",
+        );
     }
 }

@@ -14,17 +14,24 @@ enum StorageKey {
 #[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct Badge {
-    id: String,
-    group_id: String,
-    name: String,
-    description: String,
-    is_enabled: bool,
-    created_at: u64,
-    start_at: u64,
-    duration: Option<u64>,
+    pub id: String,
+    pub group_id: String,
+    pub name: String,
+    pub description: String,
+    pub is_enabled: bool,
+    pub created_at: u64,
+    pub start_at: u64,
+    pub duration: Option<u64>,
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize)]
+#[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize, PartialEq, Debug)]
+#[serde(crate = "near_sdk::serde")]
+pub enum BadgeAction {
+    Create(BadgeCreate),
+    Extend(BadgeExtend),
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize, PartialEq, Debug)]
 #[serde(crate = "near_sdk::serde")]
 pub struct BadgeCreate {
     pub id: String,
@@ -35,7 +42,7 @@ pub struct BadgeCreate {
     pub duration: u64,
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize)]
+#[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize, PartialEq, Debug)]
 #[serde(crate = "near_sdk::serde")]
 pub struct BadgeExtend {
     pub id: String,
@@ -55,7 +62,7 @@ impl Badge {
 #[derive(PanicOnDefault, BorshDeserialize, BorshSerialize)]
 pub struct StatsGallery {
     ownership: Ownership,
-    sponsorship: Sponsorship,
+    sponsorship: Sponsorship<BadgeAction>,
     badges: UnorderedMap<String, Badge>,
     badge_rate_per_day: Balance,
     badge_max_active_duration: u64,
@@ -65,8 +72,18 @@ pub struct StatsGallery {
 const DAY: u64 = 1_000_000_000 * 60 * 60 * 24;
 
 // Basically unstable_div_ceil
-fn billable_days_in_duration(duration: u64) -> u64 {
+pub fn billable_days_in_duration(duration: u64) -> u64 {
     duration / DAY + if duration % DAY > 0 { 1 } else { 0 }
+}
+
+macro_rules! extract_msg {
+    ($proposal: ident, $enum: ident, $variant: ident) => {
+        match &$proposal.msg {
+            Some($enum::$variant(value)) => value,
+            Some(..) => env::panic_str("tag mismatch"),
+            _ => env::panic_str("msg value required"),
+        }
+    };
 }
 
 #[near_bindgen]
@@ -183,22 +200,11 @@ impl StatsGallery {
         self.badge_min_creation_deposit = badge_min_creation_deposit;
     }
 
-    fn parse_proposal_msg<T, 'a>(&self, proposal: &'a Proposal) -> T
-    where
-        T: Deserialize<'a>,
-    {
-        let msg = proposal
-            .msg
-            .as_ref()
-            .unwrap_or_else(|| env::panic_str("msg value required"));
-
-        serde_json::from_str::<T>(msg)
-            .unwrap_or_else(|e| env::panic_str(&format!("Error parsing msg: {}", e)))
-    }
-
-    fn parse_and_validate_create_proposal(&self, proposal: &Proposal) -> BadgeCreate {
-        let create_request = self.parse_proposal_msg::<BadgeCreate>(proposal);
-
+    fn validate_create_proposal(
+        &self,
+        proposal: &Proposal<BadgeAction>,
+        create_request: &BadgeCreate,
+    ) {
         // Ensure unique ID
         require!(
             self.badges.get(&create_request.id).is_none(),
@@ -230,13 +236,13 @@ impl StatsGallery {
                     * self.badge_rate_per_day,
             "Insufficient deposit for specified duration",
         );
-
-        create_request
     }
 
-    fn parse_and_validate_extend_proposal(&self, proposal: &Proposal) -> (BadgeExtend, Badge) {
-        let extend_request = self.parse_proposal_msg::<BadgeExtend>(proposal);
-
+    fn validate_extend_proposal(
+        &self,
+        proposal: &Proposal<BadgeAction>,
+        extend_request: &BadgeExtend,
+    ) -> Badge {
         let existing_badge = self
             .badges
             .get(&extend_request.id)
@@ -267,29 +273,34 @@ impl StatsGallery {
                     * self.badge_rate_per_day
         );
 
-        (extend_request, existing_badge)
+        existing_badge
     }
 
-    fn on_proposal_change(&mut self, proposal: &Proposal) {
+    fn on_proposal_change(&mut self, proposal: &Proposal<BadgeAction>) {
         match (&proposal.status, proposal.tag.as_str()) {
             (ProposalStatus::PENDING, TAG_BADGE_CREATE) => {
-                self.parse_and_validate_create_proposal(proposal);
+                let create_request = extract_msg!(proposal, BadgeAction, Create);
+                self.validate_create_proposal(proposal, create_request);
             }
             (ProposalStatus::PENDING, TAG_BADGE_EXTEND) => {
-                self.parse_and_validate_extend_proposal(proposal);
+                let extend_request = extract_msg!(proposal, BadgeAction, Extend);
+                self.validate_extend_proposal(proposal, extend_request);
             }
             (ProposalStatus::ACCEPTED, TAG_BADGE_CREATE) => {
-                let create_request = self.parse_and_validate_create_proposal(proposal);
+                let create_request = extract_msg!(proposal, BadgeAction, Create);
+
+                self.validate_create_proposal(proposal, create_request);
+
                 let now = env::block_timestamp();
 
                 self.badges.insert(
                     &create_request.id.clone(),
                     &Badge {
-                        id: create_request.id,
-                        group_id: create_request.group_id,
-                        name: create_request.name,
-                        description: create_request.description,
-                        created_at: env::block_timestamp(),
+                        id: create_request.id.clone(),
+                        group_id: create_request.group_id.clone(),
+                        name: create_request.name.clone(),
+                        description: create_request.description.clone(),
+                        created_at: now,
                         start_at: create_request.start_at.unwrap_or(now),
                         duration: Some(create_request.duration),
                         is_enabled: true,
@@ -297,8 +308,8 @@ impl StatsGallery {
                 );
             }
             (ProposalStatus::ACCEPTED, TAG_BADGE_EXTEND) => {
-                let (extend_request, existing_badge) =
-                    self.parse_and_validate_extend_proposal(proposal);
+                let extend_request = extract_msg!(proposal, BadgeAction, Extend);
+                let existing_badge = self.validate_extend_proposal(proposal, extend_request);
 
                 self.badges.insert(
                     &existing_badge.id.clone(),
@@ -314,4 +325,10 @@ impl StatsGallery {
 }
 
 impl_ownership!(StatsGallery, ownership);
-impl_sponsorship!(StatsGallery, sponsorship, ownership, on_proposal_change);
+impl_sponsorship!(
+    StatsGallery,
+    sponsorship,
+    BadgeAction,
+    ownership,
+    on_proposal_change
+);
