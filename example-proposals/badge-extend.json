@@ -1,0 +1,12 @@
+{
+  "description": "This is a sponsorship proposal",
+  "tag": "badge_extend",
+  "msg": {
+    "Extend": {
+      "id": "my-badge-01",
+      "duration": 1036800000000000
+    }
+  },
+  "duration": "3888000000000000",
+  "deposit": "1200000000000000000000000"
+}

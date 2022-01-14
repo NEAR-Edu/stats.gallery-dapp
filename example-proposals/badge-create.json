@@ -1,0 +1,16 @@
+{
+  "description": "This is a sponsorship proposal",
+  "tag": "badge_create",
+  "msg": {
+    "Create": {
+      "id": "my-badge-01",
+      "group_id": "my-badge",
+      "name": "Cool Badge",
+      "description": "This is a badge you earn from doing cool stuff",
+      "start_at": null,
+      "duration": 3888000000000000
+    }
+  },
+  "duration": "3888000000000000",
+  "deposit": "4500000000000000000000000"
+}
