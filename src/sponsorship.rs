@@ -17,8 +17,8 @@ pub struct ProposalSubmission<T> {
     pub description: String,
     pub tag: String,
     pub msg: Option<T>,
-    pub duration: Option<u64>,
-    pub deposit: Balance,
+    pub duration: Option<U64>,
+    pub deposit: U128,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize, PartialEq, Debug)]
@@ -100,12 +100,12 @@ where
         }
     }
 
-    pub fn get_total_deposits(&self) -> Balance {
-        self.total_deposits
+    pub fn get_total_deposits(&self) -> U128 {
+        self.total_deposits.into()
     }
 
-    pub fn get_total_accepted_deposits(&self) -> Balance {
-        self.total_accepted_deposits
+    pub fn get_total_accepted_deposits(&self) -> U128 {
+        self.total_accepted_deposits.into()
     }
 
     pub fn get_all(&self) -> Vec<Proposal<T>> {
@@ -248,7 +248,7 @@ where
 
         let id = self.proposals.len();
 
-        let duration = match (self.proposal_duration.get(), submission.duration) {
+        let duration = match (self.proposal_duration.get(), submission.duration.map(|x| x.into())) {
             (Some(contract_duration), Some(submission_duration)) => {
                 Some(u64::min(contract_duration, submission_duration))
             }
@@ -256,13 +256,15 @@ where
             _ => None,
         };
 
+        let submission_deposit = submission.deposit.into();
+
         let proposal = Proposal {
             id,
             author_id: env::predecessor_account_id(),
             description: submission.description,
             tag: submission.tag,
             msg: submission.msg,
-            deposit: submission.deposit,
+            deposit: submission_deposit,
             created_at: env::block_timestamp(),
             duration,
             resolved_at: None,
@@ -274,7 +276,7 @@ where
         let storage_usage_end = env::storage_usage();
         let storage_fee = Balance::from(storage_usage_end.saturating_sub(storage_usage_start))
             * env::storage_byte_cost();
-        let total_required_deposit = storage_fee + submission.deposit;
+        let total_required_deposit = storage_fee + submission_deposit;
         require!(
             attached_deposit >= total_required_deposit,
             format!(
@@ -304,21 +306,21 @@ where
     fn spo_get_tags(&self) -> Vec<String>;
     fn spo_add_tags(&mut self, tags: Vec<String>);
     fn spo_remove_tags(&mut self, tags: Vec<String>);
-    fn spo_get_total_deposits(&self) -> Balance;
-    fn spo_get_total_accepted_deposits(&self) -> Balance;
+    fn spo_get_total_deposits(&self) -> U128;
+    fn spo_get_total_accepted_deposits(&self) -> U128;
     fn spo_get_all_proposals(&self) -> Vec<Proposal<T>>;
     fn spo_get_pending_proposals(&self) -> Vec<Proposal<T>>;
     fn spo_get_accepted_proposals(&self) -> Vec<Proposal<T>>;
     fn spo_get_rejected_proposals(&self) -> Vec<Proposal<T>>;
     fn spo_get_rescinded_proposals(&self) -> Vec<Proposal<T>>;
     fn spo_get_expired_proposals(&self) -> Vec<Proposal<T>>;
-    fn spo_get_proposal(&self, id: u64) -> Option<Proposal<T>>;
-    fn spo_get_duration(&self) -> Option<u64>;
-    fn spo_set_duration(&mut self, duration: Option<u64>);
+    fn spo_get_proposal(&self, id: U64) -> Option<Proposal<T>>;
+    fn spo_get_duration(&self) -> Option<U64>;
+    fn spo_set_duration(&mut self, duration: Option<U64>);
     fn spo_submit(&mut self, submission: ProposalSubmission<T>) -> Proposal<T>;
-    fn spo_accept(&mut self, id: u64) -> Proposal<T>;
-    fn spo_reject(&mut self, id: u64) -> Proposal<T>;
-    fn spo_rescind(&mut self, id: u64) -> Proposal<T>;
+    fn spo_accept(&mut self, id: U64) -> Proposal<T>;
+    fn spo_reject(&mut self, id: U64) -> Proposal<T>;
+    fn spo_rescind(&mut self, id: U64) -> Proposal<T>;
 }
 
 #[macro_export]
@@ -344,11 +346,11 @@ macro_rules! impl_sponsorship {
                 self.$sponsorship.remove_tags(tags)
             }
 
-            fn spo_get_total_deposits(&self) -> Balance {
+            fn spo_get_total_deposits(&self) -> U128 {
                 self.$sponsorship.get_total_deposits()
             }
 
-            fn spo_get_total_accepted_deposits(&self) -> Balance {
+            fn spo_get_total_accepted_deposits(&self) -> U128 {
                 self.$sponsorship.get_total_accepted_deposits()
             }
 
@@ -376,20 +378,21 @@ macro_rules! impl_sponsorship {
                 self.$sponsorship.get_expired()
             }
 
-            fn spo_get_proposal(&self, id: u64) -> Option<Proposal<$sponsorship_type>> {
-                self.$sponsorship.get_proposal(id)
+            fn spo_get_proposal(&self, id: U64) -> Option<Proposal<$sponsorship_type>> {
+                self.$sponsorship.get_proposal(id.into())
             }
 
-            fn spo_get_duration(&self) -> Option<u64> {
-                self.$sponsorship.get_duration()
+            fn spo_get_duration(&self) -> Option<U64> {
+                self.$sponsorship.get_duration().map(|x| x.into())
             }
 
             #[payable]
-            fn spo_set_duration(&mut self, duration: Option<u64>) {
+            fn spo_set_duration(&mut self, duration: Option<U64>) {
                 assert_one_yocto();
-                self.$sponsorship.set_duration(duration)
+                self.$sponsorship.set_duration(duration.map(|x| x.into()))
             }
 
+            #[payable]
             fn spo_submit(&mut self, submission: ProposalSubmission<$sponsorship_type>) -> Proposal<$sponsorship_type> {
                 // submit manages its own deposit requirements
                 let proposal = self.$sponsorship.submit(submission);
@@ -398,27 +401,27 @@ macro_rules! impl_sponsorship {
             }
 
             #[payable]
-            fn spo_accept(&mut self, id: u64) -> Proposal<$sponsorship_type> {
+            fn spo_accept(&mut self, id: U64) -> Proposal<$sponsorship_type> {
                 assert_one_yocto();
                 self.$ownership.assert_owner();
-                let proposal = self.$sponsorship.accept(id);
+                let proposal = self.$sponsorship.accept(id.into());
                 $(self.$on_status_change(&proposal);)?
                 proposal
             }
 
             #[payable]
-            fn spo_reject(&mut self, id: u64) -> Proposal<$sponsorship_type> {
+            fn spo_reject(&mut self, id: U64) -> Proposal<$sponsorship_type> {
                 assert_one_yocto();
                 self.$ownership.assert_owner();
-                let proposal = self.$sponsorship.reject(id);
+                let proposal = self.$sponsorship.reject(id.into());
                 $(self.$on_status_change(&proposal);)?
                 proposal
             }
 
             #[payable]
-            fn spo_rescind(&mut self, id: u64) -> Proposal<$sponsorship_type> {
+            fn spo_rescind(&mut self, id: U64) -> Proposal<$sponsorship_type> {
                 assert_one_yocto();
-                let proposal = self.$sponsorship.rescind(id);
+                let proposal = self.$sponsorship.rescind(id.into());
                 $(self.$on_status_change(&proposal);)?
                 proposal
             }

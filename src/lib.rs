@@ -1,6 +1,7 @@
 use near_sdk::{
     borsh::{self, *},
     collections::*,
+    json_types::*,
     serde::{self, *},
     *,
 };
@@ -62,10 +63,10 @@ mod tests {
     fn create_instance() -> StatsGallery {
         StatsGallery::new(
             owner_account(),
-            PROPOSAL_DURATION,
-            BADGE_RATE_PER_DAY,
-            BADGE_MAX_ACTIVE_DURATION,
-            BADGE_MIN_CREATION_DEPOSIT,
+            PROPOSAL_DURATION.into(),
+            BADGE_RATE_PER_DAY.into(),
+            BADGE_MAX_ACTIVE_DURATION.into(),
+            BADGE_MIN_CREATION_DEPOSIT.into(),
         )
     }
 
@@ -104,8 +105,8 @@ mod tests {
     fn proposal_submission(action: BadgeAction, tag: String) -> ProposalSubmission<BadgeAction> {
         ProposalSubmission {
             description: "This is a sponsorship proposal".to_string(),
-            deposit: calculate_deposit(&action),
-            duration: Some(ONE_DAY * 45),
+            deposit: U128(calculate_deposit(&action)),
+            duration: Some(U64(ONE_DAY * 45)),
             msg: Some(action),
             tag,
         }
@@ -138,17 +139,17 @@ mod tests {
         );
         assert_eq!(
             Some(PROPOSAL_DURATION),
-            c.spo_get_duration(),
+            c.spo_get_duration().map(|x| x.into()),
             "Proposal duration should be properly initialized",
         );
         assert_eq!(
             BADGE_MAX_ACTIVE_DURATION,
-            c.get_badge_max_active_duration(),
+            u64::from(c.get_badge_max_active_duration()),
             "Badge max active duration should be properly initialized",
         );
         assert_eq!(
             BADGE_MIN_CREATION_DEPOSIT,
-            c.get_badge_min_creation_deposit(),
+            u128::from(c.get_badge_min_creation_deposit()),
             "Badge min creation deposit should be properly initialized",
         );
     }
@@ -283,6 +284,16 @@ mod tests {
     }
 
     #[test]
+    fn serialize_actions() {
+        let submission = proposal_submission(
+            BadgeAction::Create(badge_create()),
+            TAG_BADGE_CREATE.to_string(),
+        );
+
+        log!("{}", serde_json::to_string(&submission).unwrap());
+    }
+
+    #[test]
     fn submit_proposal() {
         let context = get_context(owner_account());
         testing_env!(context.build());
@@ -293,8 +304,8 @@ mod tests {
             BadgeAction::Create(badge_create()),
             TAG_BADGE_CREATE.to_string(),
         );
-        context.attached_deposit(submission.deposit + 10u128.pow(22));
-        let submission_deposit = submission.deposit;
+        context.attached_deposit(u128::from(submission.deposit) + 10u128.pow(22));
+        let submission_deposit: u128 = submission.deposit.into();
         testing_env!(context.build());
         let proposal = c.spo_submit(submission);
 
@@ -330,7 +341,7 @@ mod tests {
         );
         assert_eq!(
             proposal,
-            c.spo_get_proposal(proposal.id).unwrap(),
+            c.spo_get_proposal(proposal.id.into()).unwrap(),
             "Proposal should be indexed by ID",
         );
     }
@@ -365,7 +376,7 @@ mod tests {
             TAG_BADGE_CREATE.to_string(),
         );
         // Missing deposit for storage
-        context.attached_deposit(submission.deposit /* + 10u128.pow(22) */);
+        context.attached_deposit(u128::from(submission.deposit) /* + 10u128.pow(22) */);
 
         testing_env!(context.build());
         c.spo_submit(submission);
@@ -382,7 +393,7 @@ mod tests {
             BadgeAction::Create(badge_create()),
             TAG_BADGE_CREATE.to_string(),
         );
-        context.attached_deposit(submission.deposit + 10u128.pow(22));
+        context.attached_deposit(u128::from(submission.deposit) + 10u128.pow(22));
         testing_env!(context.build());
         let proposal = c.spo_submit(submission);
 
@@ -392,7 +403,7 @@ mod tests {
 
         let balance_before_rescind = env::account_balance();
 
-        let proposal = c.spo_rescind(proposal.id);
+        let proposal = c.spo_rescind(proposal.id.into());
 
         let balance_after_rescind = env::account_balance();
 
@@ -430,7 +441,7 @@ mod tests {
             BadgeAction::Create(badge_create()),
             TAG_BADGE_CREATE.to_string(),
         );
-        context.attached_deposit(submission.deposit + 10u128.pow(22));
+        context.attached_deposit(u128::from(submission.deposit) + 10u128.pow(22));
         testing_env!(context.build());
         let proposal = c.spo_submit(submission);
 
@@ -438,7 +449,7 @@ mod tests {
         // context.attached_deposit(1);
         testing_env!(context.build());
 
-        c.spo_rescind(proposal.id);
+        c.spo_rescind(proposal.id.into());
     }
 
     #[test]
@@ -453,7 +464,7 @@ mod tests {
             BadgeAction::Create(badge_create()),
             TAG_BADGE_CREATE.to_string(),
         );
-        context.attached_deposit(submission.deposit + 10u128.pow(22));
+        context.attached_deposit(u128::from(submission.deposit) + 10u128.pow(22));
         testing_env!(context.build());
         let proposal = c.spo_submit(submission);
 
@@ -461,7 +472,7 @@ mod tests {
         context.attached_deposit(1);
         testing_env!(context.build());
 
-        c.spo_rescind(proposal.id);
+        c.spo_rescind(proposal.id.into());
     }
 
     #[test]
@@ -476,7 +487,7 @@ mod tests {
             TAG_BADGE_CREATE.to_string(),
         );
         context
-            .attached_deposit(submission.deposit + 10u128.pow(22))
+            .attached_deposit(u128::from(submission.deposit) + 10u128.pow(22))
             .block_timestamp(1_000_000_000);
 
         testing_env!(context.build());
@@ -488,7 +499,7 @@ mod tests {
             .block_timestamp(1_000_000_000 + PROPOSAL_DURATION + 1);
         testing_env!(context.build());
 
-        c.spo_rescind(proposal.id);
+        c.spo_rescind(proposal.id.into());
     }
 
     #[test]
@@ -503,7 +514,7 @@ mod tests {
             BadgeAction::Create(badge_create()),
             TAG_BADGE_CREATE.to_string(),
         );
-        context.attached_deposit(submission.deposit + 10u128.pow(22));
+        context.attached_deposit(u128::from(submission.deposit) + 10u128.pow(22));
         testing_env!(context.build());
         let proposal = c.spo_submit(submission);
 
@@ -511,9 +522,9 @@ mod tests {
         context.attached_deposit(1);
         testing_env!(context.build());
 
-        c.spo_rescind(proposal.id);
+        c.spo_rescind(proposal.id.into());
         // Cannot rescind twice
-        c.spo_rescind(proposal.id);
+        c.spo_rescind(proposal.id.into());
     }
 
     #[test]
@@ -528,7 +539,7 @@ mod tests {
             BadgeAction::Create(badge_create()),
             TAG_BADGE_CREATE.to_string(),
         );
-        context.attached_deposit(submission.deposit + 10u128.pow(22));
+        context.attached_deposit(u128::from(submission.deposit) + 10u128.pow(22));
         testing_env!(context.build());
         let proposal = c.spo_submit(submission);
 
@@ -537,7 +548,7 @@ mod tests {
         context.attached_deposit(1);
         testing_env!(context.build());
 
-        c.spo_accept(proposal.id);
+        c.spo_accept(proposal.id.into());
 
         require!(c.get_badges().len() == 1, "There should be one badge",);
 
@@ -573,7 +584,7 @@ mod tests {
             BadgeAction::Create(badge_create()),
             TAG_BADGE_EXTEND.to_string(),
         );
-        context.attached_deposit(submission.deposit + 10u128.pow(22));
+        context.attached_deposit(u128::from(submission.deposit) + 10u128.pow(22));
         testing_env!(context.build());
         c.spo_submit(submission);
     }
@@ -590,7 +601,7 @@ mod tests {
             BadgeAction::Create(badge_create()),
             TAG_BADGE_CREATE.to_string(),
         );
-        context.attached_deposit(create_submission.deposit + 10u128.pow(22));
+        context.attached_deposit(u128::from(create_submission.deposit) + 10u128.pow(22));
         testing_env!(context.build());
         let create_proposal = c.spo_submit(create_submission);
 
@@ -599,7 +610,7 @@ mod tests {
         context.attached_deposit(1);
         testing_env!(context.build());
 
-        c.spo_accept(create_proposal.id);
+        c.spo_accept(create_proposal.id.into());
 
         // Submit badge extension request
         let mut context = get_context(accounts(1));
@@ -608,7 +619,7 @@ mod tests {
             TAG_BADGE_EXTEND.to_string(),
         );
 
-        context.attached_deposit(extend_submission.deposit + 10u128.pow(22));
+        context.attached_deposit(u128::from(extend_submission.deposit) + 10u128.pow(22));
         testing_env!(context.build());
         let extend_proposal = c.spo_submit(extend_submission);
 
@@ -617,7 +628,7 @@ mod tests {
         context.attached_deposit(1);
         testing_env!(context.build());
 
-        c.spo_accept(extend_proposal.id);
+        c.spo_accept(extend_proposal.id.into());
 
         let expected_create = badge_create();
         let expected = badge_extend();
@@ -647,7 +658,7 @@ mod tests {
             BadgeAction::Create(badge_create()),
             TAG_BADGE_CREATE.to_string(),
         );
-        context.attached_deposit(create_submission.deposit + 10u128.pow(22));
+        context.attached_deposit(u128::from(create_submission.deposit) + 10u128.pow(22));
         testing_env!(context.build());
         let create_proposal = c.spo_submit(create_submission);
 
@@ -656,7 +667,7 @@ mod tests {
         context.attached_deposit(1);
         testing_env!(context.build());
 
-        c.spo_accept(create_proposal.id);
+        c.spo_accept(create_proposal.id.into());
 
         // Submit badge extension request
         let mut context = get_context(accounts(1));
@@ -667,7 +678,7 @@ mod tests {
         let extend_submission =
             proposal_submission(BadgeAction::Extend(original), TAG_BADGE_EXTEND.to_string());
 
-        context.attached_deposit(extend_submission.deposit + 10u128.pow(22));
+        context.attached_deposit(u128::from(extend_submission.deposit) + 10u128.pow(22));
         testing_env!(context.build());
         c.spo_submit(extend_submission);
     }

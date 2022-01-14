@@ -91,22 +91,22 @@ impl StatsGallery {
     #[init]
     pub fn new(
         owner_id: AccountId,
-        proposal_duration: u64,
-        badge_rate_per_day: Balance,
-        badge_max_active_duration: u64,
-        badge_min_creation_deposit: Balance,
+        proposal_duration: U64,
+        badge_rate_per_day: U128,
+        badge_max_active_duration: U64,
+        badge_min_creation_deposit: U128,
     ) -> Self {
         Self {
             ownership: Ownership::new(StorageKey::OWNERSHIP, owner_id),
             sponsorship: Sponsorship::new(
                 StorageKey::SPONSORSHIP,
                 vec![TAG_BADGE_CREATE.to_string(), TAG_BADGE_EXTEND.to_string()],
-                Some(proposal_duration),
+                Some(proposal_duration.into()),
             ),
             badges: UnorderedMap::new(StorageKey::BADGES),
-            badge_rate_per_day,
-            badge_max_active_duration,
-            badge_min_creation_deposit,
+            badge_rate_per_day: badge_rate_per_day.into(),
+            badge_max_active_duration: badge_max_active_duration.into(),
+            badge_min_creation_deposit: badge_min_creation_deposit.into(),
         }
     }
 
@@ -159,27 +159,29 @@ impl StatsGallery {
         self.badges.remove(&badge_id);
     }
 
-    pub fn get_badge_rate_per_day(&self) -> Balance {
-        self.badge_rate_per_day
+    pub fn get_badge_rate_per_day(&self) -> U128 {
+        self.badge_rate_per_day.into()
     }
 
     #[payable]
-    pub fn set_badge_rate_per_day(&mut self, badge_rate_per_day: Balance) {
+    pub fn set_badge_rate_per_day(&mut self, badge_rate_per_day: U128) {
         assert_one_yocto();
         self.ownership.assert_owner();
+        let badge_rate_per_day = badge_rate_per_day.into();
         require!(badge_rate_per_day > 0, "Badge rate must be greater than 0");
 
         self.badge_rate_per_day = badge_rate_per_day;
     }
 
-    pub fn get_badge_max_active_duration(&self) -> u64 {
-        self.badge_max_active_duration
+    pub fn get_badge_max_active_duration(&self) -> U64 {
+        self.badge_max_active_duration.into()
     }
 
     #[payable]
-    pub fn set_badge_max_active_duration(&mut self, badge_max_active_duration: u64) {
+    pub fn set_badge_max_active_duration(&mut self, badge_max_active_duration: U64) {
         assert_one_yocto();
         self.ownership.assert_owner();
+        let badge_max_active_duration = badge_max_active_duration.into();
         require!(
             badge_max_active_duration > 0,
             "Badge max active duration must be greater than 0"
@@ -188,16 +190,27 @@ impl StatsGallery {
         self.badge_max_active_duration = badge_max_active_duration;
     }
 
-    pub fn get_badge_min_creation_deposit(&self) -> Balance {
-        self.badge_min_creation_deposit
+    pub fn get_badge_min_creation_deposit(&self) -> U128 {
+        self.badge_min_creation_deposit.into()
     }
 
     #[payable]
-    pub fn set_badge_min_creation_deposit(&mut self, badge_min_creation_deposit: Balance) {
+    pub fn set_badge_min_creation_deposit(&mut self, badge_min_creation_deposit: U128) {
         assert_one_yocto();
         self.ownership.assert_owner();
 
-        self.badge_min_creation_deposit = badge_min_creation_deposit;
+        self.badge_min_creation_deposit = badge_min_creation_deposit.into();
+    }
+
+    #[payable]
+    pub fn withdraw_owner(&mut self, amount: U128) -> Promise {
+        assert_one_yocto();
+        self.ownership.assert_owner();
+
+        // .unwrap() is safe because of assert_owner() call
+        let owner = self.ownership.owner.as_ref().unwrap().clone();
+
+        Promise::new(owner).transfer(amount.into())
     }
 
     fn validate_create_proposal(
