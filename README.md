@@ -2,7 +2,7 @@
 
 This smart contract allows anyone to submit a proposal for a certain action with an attached deposit. These are called "sponsorship proposals," and the attached action is called an "action request." The owner of the smart contract has the ability to accept or reject a proposal within its designated validity period ("duration"). Until the proposal is accepted or rejected ("resolved"), the original author of the proposal may rescind it, receiving their deposit back as well.
 
-The sponsorship and ownership parts of the contract are cleanly separated from the stats.gallery-specific implementation, allowing for reusability of those features.
+The sponsorship and ownership parts of the contract are cleanly separated from the stats.gallery-specific implementation, allowing for easy reuse of these features in other smart contracts.
 
 # Required Software
 
@@ -10,6 +10,7 @@ The sponsorship and ownership parts of the contract are cleanly separated from t
 * Cargo 1.56
 * Node.js 14
 * NPM 8
+* NEAR CLI 3.1.0
 
 # Build
 
@@ -19,23 +20,25 @@ $ ./build.sh
 
 # Deploy
 
-First, edit `./init-args.js` to suit your use-case. In particular, you probably want to change `owner_id` to an account you control.
-
 ## Testnet
 
+Set the `OWNER_ID` environment variable to the ID of the account to which you wish to assign ownership of the contract deployment.
+
 ```txt
-$ ./dev-deploy.sh
+$ OWNER_ID=your-account-id.testnet ./dev-deploy.sh
 ```
 
 ## Mainnet
 
 ```txt
-$ ./deploy.sh
+$ OWNER_ID=your-account-id.near ./deploy.sh
 ```
 
 # Usage
 
 See [`/example-proposals`](/example-proposals) for example argument JSON.
+
+Sponsorship-related methods are prefixed with `spo_`, and ownership-related methods with `own_`.
 
 * An author wants to propose a badge, so they call `spo_submit(submission)` to submit a proposal.
 * An author wants to rescind a badge proposal, so they call `spo_rescind(id)` with the ID of the proposal they wish to rescind.
